@@ -1,0 +1,13 @@
+version: '1'
+
+services:
+  rabbitmq:
+    image: rabbitmq:3.9.5-management # Use the specific version you want
+    ports:
+      - "5672:5672" # RabbitMQ default port
+      - "15672:15672" # RabbitMQ management UI port
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq # Persist data
+
+volumes:
+  rabbitmq_data:
