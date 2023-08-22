@@ -51,7 +51,25 @@ function ForgotPasswordForm() {
 
         const email = event.target.email.value;
 
-        const singleSpan = webTracerWithZone.startSpan('handleSubmit');
+        const userAgent = window.navigator.userAgent;
+
+        const singleSpan = webTracerWithZone.startSpan('handleSubmit', { 
+            attributes:  {
+                            'http.scheme': 'http', 
+                            'http.user_agent': userAgent,
+                            'http.flavor': '1.1',
+                            'http.method': 'POST',
+                            'http.route': '/users/reset-password',
+                            'http.url': 'http://localhost:3000/users/reset-password',
+                            'http.host': 'localhost:3000',
+                            'http.target': '/users/reset-password',
+                            'http.host_port': '3000',
+                        }
+            }
+        );
+        singleSpan.setAttribute('email', email);
+
+
         context.with(trace.setSpan(context.active(), singleSpan), () => {
         // get trace ID
         const traceId = trace.getSpan(context.active()).spanContext().traceId;

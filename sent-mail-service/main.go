@@ -13,8 +13,10 @@ import (
 	log "github.com/sirupsen/logrus"
 	"github.com/streadway/amqp"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/propagation"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	oteltrace "go.opentelemetry.io/otel/trace"
 )
 
 type QueueMessage struct {
@@ -48,7 +50,7 @@ func main() {
 	otel.SetTracerProvider(tp)
 	otel.SetTextMapPropagator(sentryotel.NewSentryPropagator())
 
-	conn, err := amqp.Dial("amqp://guest:guest@localhost:5672/")
+	conn, err := amqp.Dial(os.Getenv("RABBITMQ_URL"))
 	if err != nil {
 		log.Fatal("Failed to connect to RabbitMQ:", err)
 	}
@@ -99,16 +101,8 @@ func main() {
 }
 
 func handleMessage(d amqp.Delivery) {
-
-	const spanID = "handleSentMailMessage"
+	const spanName = "handleSentMailMessage"
 	msg := string(d.Body)
-
-	log.SetFormatter(&log.JSONFormatter{})
-	l := log.WithFields(log.Fields{
-		"message": msg,
-		"span_id": spanID,
-	})
-	l.Info("Received sent mail message !")
 
 	headers := d.Headers
 	convertedHeaders := make(map[string]string)
@@ -117,10 +111,27 @@ func handleMessage(d amqp.Delivery) {
 	}
 
 	ctx := otel.GetTextMapPropagator().Extract(context.Background(), propagation.MapCarrier(convertedHeaders))
-	ctx, span := otel.Tracer("sentEmail").Start(ctx, "sentEmail")
+	parentSpanID := oteltrace.SpanFromContext(ctx).SpanContext().SpanID().String()
+	opts := []oteltrace.SpanStartOption{
+		oteltrace.WithAttributes(attribute.KeyValue{Key: attribute.Key("messaging.system"), Value: attribute.StringValue("rabbitmq")}),
+		oteltrace.WithAttributes(attribute.KeyValue{Key: attribute.Key("messaging.operation"), Value: attribute.StringValue("process")}),
+	}
 
-	// sleep 200 miliseconds to simulate a slow process
-	time.Sleep(200 * time.Millisecond)
+	// create queue span with context
+	ctx, span := otel.Tracer(spanName).Start(ctx, spanName, opts...)
+	log.SetFormatter(&log.JSONFormatter{})
+	l := log.WithFields(log.Fields{
+		"message":        msg,
+		"span_id":        span.SpanContext().SpanID().String(),
+		"parent_span_id": parentSpanID,
+		"trace_id":       span.SpanContext().TraceID().String(),
+	})
+	l.Info("Received sent mail message !")
+
+	fmt.Println("ctx: ", ctx)
+
+	// sleep 50 miliseconds to simulate a slow process
+	time.Sleep(50 * time.Millisecond)
 
 	defer span.End()
 

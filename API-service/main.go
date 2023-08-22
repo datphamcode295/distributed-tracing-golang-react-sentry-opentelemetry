@@ -2,10 +2,9 @@ package main
 
 import (
 	"fmt"
-	"net/http"
 	"os"
 
-	"github.com/datphamcode295/distributed-tracing/models"
+	"github.com/datphamcode295/distributed-tracing/handlers"
 	"github.com/datphamcode295/distributed-tracing/queue"
 
 	"github.com/getsentry/sentry-go"
@@ -45,6 +44,11 @@ func main() {
 	otel.SetTracerProvider(tp)
 	otel.SetTextMapPropagator(sentryotel.NewSentryPropagator())
 
+	q := queue.New(os.Getenv("RABBITMQ_URL"))
+	defer q.Close()
+
+	h := handlers.New(q)
+
 	r := gin.Default()
 
 	//gin OTEL instrumentation
@@ -61,49 +65,8 @@ func main() {
 	config.AllowHeaders = []string{"Origin", "Content-Length", "Content-Type", "Baggage", "Sentry-Trace"}
 	r.Use(cors.New(config))
 
-	r.POST("/users/reset-password", resetPasswordHandler)
+	r.POST("/users/reset-password", h.ResetPasswordHandler)
 
 	fmt.Println("Server started on :3000")
 	r.Run(":3000")
-}
-
-func resetPasswordHandler(c *gin.Context) {
-	const spanID = "resetPasswordHandler"
-	newCtx, span := otel.Tracer(spanID).Start(c.Request.Context(), spanID)
-	defer span.End()
-
-	// Update c ctx to newCtx
-	c.Request = c.Request.WithContext(newCtx)
-
-	traceID := c.GetHeader("Sentry-Trace")
-	log.SetFormatter(&log.JSONFormatter{})
-	l := log.WithFields(log.Fields{
-		"trace_id": traceID,
-		"span_id":  spanID,
-	})
-	l.Info("Receive reset password request !")
-
-	var request models.ResetPasswordRequest
-	if err := c.ShouldBindJSON(&request); err != nil {
-		l.Error("Error parsing request body")
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Bad Request"})
-		return
-	}
-
-	queueMessage := queue.QueueMessage{
-		TraceID:       traceID,
-		ParentTraceID: spanID,
-		Email:         request.Email,
-	}
-
-	err := queue.EnqueueMessage(c.Request.Context(), queueMessage)
-	if err != nil {
-		l.Error("Error enqueue message")
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, models.MessageResponse{
-		Message: "Password reset email sent",
-	})
 }

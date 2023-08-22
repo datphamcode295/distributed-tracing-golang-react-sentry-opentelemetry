@@ -1,7 +1,20 @@
-# distributed-tracing-golang-react-sentry-opentelemetry
+# Distributed Tracing Example
 This is example how to implement distributed tracing in golang and reactjs with Opentelemetry and Sentry
 ## How to run
-### Step 1:
+### Step 1: setup env
 Copy .env from .env.example
-### Step 2:
-Runing following API service (localhost:3000) -> Reset Password Page -> Sent Mail service
+### Step 2: run RabbitMQ docker
+```
+make docker-up
+```
+### Step 3: install all dependencies
+```
+make init
+```
+### Step 4: runing services
+Open 3 terminals, then run:
+```
+make run-api-service
+make run-mail-service   
+make run-fe
+```
